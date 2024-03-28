@@ -1,25 +1,52 @@
-#include "myroot.h"
-#include "TH1.h"
+#ifndef MYROOT_HPP
+#define MYROOT_HPP
+
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <vector>
+#include "../include/rootheader.h"
+
+template <class T = double>
+struct Histogram {
+  const T * data;
+  int size;
+  const char *filename;
+  const char *xlabel;
+  const char *ylabel;
+  bool logy;
+  bool output;
+  int nbinsx;
+  double xlow;
+  double xup;
+
+  TFile fnew;
+  TCanvas *canvas;
+
+  Histogram<T> (const T * data, int size, const char *filename,
+    const char *xlabel, const char *ylabel, bool logy, bool output,
+    int nbinsx, double xlow, double xup);
+  ~Histogram<T> ();
+  void save_png(TCanvas *&sharedcanvas);
+  void output_data(const TH1F &);
+  void draw_histogram(TCanvas *&sharedcanvas);
+  void draw_poisson_fit(const TH1F &);
+};
+
+template <class T>
+const std::vector<T> &read_file(const char *);
 
 TRandom3 *grand = new TRandom3(0);
 
 template <class T>
 Histogram<T>::Histogram(const T * data, int size,
   const char *filename, const char *xlabel, const char *ylabel,
-  bool logy, bool output, int nbinsx, double xlow, double xup) {
-  this->filename = filename;
-  this->xlabel = xlabel;
-  this->ylabel = ylabel;
-  this->output = output;
-  this->nbinsx = nbinsx;
-  this->data = data;
-  this->size = size;
-  this->logy = logy;
-  this->xlow = xlow;
-  this->xup = xup;
-
-  TFile fnew(filename, "recreate");
-  TCanvas *canvas = new TCanvas("canvas", filename, 800, 600);
+  bool logy, bool output, int nbinsx, double xlow, double xup) :
+  data(data), size(size), filename(filename), xlabel(xlabel), ylabel(ylabel),
+  logy(logy), output(output),
+  nbinsx(nbinsx), xlow(xlow), xup(xup),
+  fnew(filename, "recreate"),
+  canvas(new TCanvas(filename, filename, 800, 600)) {
   canvas->SetGrid();
   if (logy) canvas->SetLogy();
 };
@@ -32,10 +59,10 @@ Histogram<T>::~Histogram() {
 };
 
 template <class T>
-void Histogram<T>::save_png() const {
+void Histogram<T>::save_png(TCanvas *&sharedcanvas) {
   std::string pngname = filename;
   pngname.append(".png");
-  canvas->SaveAs(pngname.c_str());
+  sharedcanvas->SaveAs(pngname.c_str());
 };
 
 template <class T>
@@ -54,7 +81,8 @@ void Histogram<T>::output_data(const TH1F &h1) {
 
 // need to split the function !!!
 template <class T>
-void Histogram<T>::draw_histogram() {
+void Histogram<T>::draw_histogram(TCanvas *&sharedcanvas) {
+  std::cout << "Drawing histogram..." << std::endl;
   TH1F h1(filename, "", nbinsx, xlow, xup);
   h1.SetFillColorAlpha(kBlue, 0.4);
   h1.SetLineColor(kBlue+1); 
@@ -67,16 +95,18 @@ void Histogram<T>::draw_histogram() {
   for (int i = 0; i < size; i++) {
     h1.Fill(data[i]);
   }
+  sharedcanvas->cd();
   h1.Draw();
 
   if (output) output_data(h1);
-  save_png();
+  save_png(sharedcanvas);
+  canvas->cd();
 };
 
 template <class T>
 void Histogram<T>::draw_poisson_fit(const TH1F &h1) {
   double mean = h1.GetMean();
-  TF1 *poissonFunc = new TF1("poisson", "[0]*TMath::Poisson(x,[1])", xlow, xup);
+  static TF1 *poissonFunc = new TF1("poisson", "[0]*TMath::Poisson(x,[1])", xlow, xup);
   poissonFunc->SetLineWidth(2);
   poissonFunc->SetParameters(h1.GetEntries() * (xup - xlow) / nbinsx, mean); 
   poissonFunc->SetLineColor(kRed);
@@ -137,3 +167,5 @@ const std::vector<long long int> &read_file(const char *filename) {
   }
   return array;
 };
+
+#endif
