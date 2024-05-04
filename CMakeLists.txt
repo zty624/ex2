@@ -51,3 +51,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR})
 add_executable(ex1 src/myroot.hpp src/ex1.cpp)
 target_include_directories(ex1 PRIVATE ${ROOT_INCLUDE_DIR})
 target_link_libraries(ex1 ${ROOT_LIBRARIES})
+
+add_executable(ex2 src/myroot.hpp src/ex2.cpp)
+target_include_directories(ex2 PRIVATE ${ROOT_INCLUDE_DIR})
+target_link_libraries(ex2 ${ROOT_LIBRARIES})
