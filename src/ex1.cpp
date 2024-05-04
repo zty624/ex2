@@ -1,6 +1,6 @@
 #include "myroot.hpp"
 
-extern TRandom3 *grand;
+TRandom3 *grand = new TRandom3(0);
 const double LAMBDA1 = 100; // Hz
 const double LAMBDA2 = 200; // Hz
 const double TAU = 10e-6; // us 
@@ -30,9 +30,8 @@ int main() {
     time1.push_back(time);
     time += tmp;
   };
-  double *data1_c = data1.data();
-  Histogram<double> hist1(data1_c, data1.size(), "data1", "Time/s", "Count", false, false, 100, 0.0, 3e-2);
-  hist1.draw_histogram(hist1.canvas);
+  Histogram<double> hist1(data1, "data1");
+  hist1.draw_histogram(100, "", "Time/s", "Count", 0.0, 3e-2);
 
   // generate 2 events
   time = 0, tmp = 0;
@@ -42,9 +41,8 @@ int main() {
     time2.push_back(time);
     time += tmp;
   };
-  double *data2_c = data2.data();
-  Histogram<double> hist2(data2_c, data2.size(), "data2", "Time/s", "Count", false, false, 100, 0.0, 3e-2);
-  hist2.draw_histogram(hist2.canvas);
+  Histogram<double> hist2(data2, "data2");
+  hist2.draw_histogram(100, "", "Time/s", "Count", 0.0, 3e-2);
 
   // question 2
   unsigned long int i1 = 0, i2 = 0;
@@ -63,11 +61,9 @@ int main() {
       i2++;
     }
   };
-  double *event_c = event.data();
-  Histogram<double> ent(event_c, event.size(), "q1EventA", "Time/s", "Count", false, false, 100, 0.0, 10);
-  ent.draw_histogram(ent.canvas);
+  Histogram<double> ent(event, "q1EventA");
+  ent.draw_histogram(100, "", "Time/s", "Count", 0.0, 10);
   
-  delete[] data1_c;
-  delete[] data2_c;
+  delete grand;
   return 0;
 }

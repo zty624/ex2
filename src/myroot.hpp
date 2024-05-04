@@ -3,169 +3,331 @@
 
 #include <iostream>
 #include <fstream>
-#include <string>
-#include <vector>
 #include "../include/rootheader.h"
 
-template <class T = double>
-struct Histogram {
-  const T * data;
-  int size;
-  const char *filename;
-  const char *xlabel;
-  const char *ylabel;
-  bool logy;
-  bool output;
-  int nbinsx;
-  double xlow;
-  double xup;
 
-  TFile fnew;
+class Graph {
+protected:
+  TFile *fnew;
   TCanvas *canvas;
+  std::string filename;
 
-  Histogram<T> (const T * data, int size, const char *filename,
-    const char *xlabel, const char *ylabel, bool logy, bool output,
-    int nbinsx, double xlow, double xup);
-  ~Histogram<T> ();
-  void save_png(TCanvas *&sharedcanvas);
-  void output_data(const TH1F &);
-  void draw_histogram(TCanvas *&sharedcanvas);
-  void draw_poisson_fit(const TH1F &);
-};
-
-template <class T>
-const std::vector<T> &read_file(const char *);
-
-TRandom3 *grand = new TRandom3(0);
-
-template <class T>
-Histogram<T>::Histogram(const T * data, int size,
-  const char *filename, const char *xlabel, const char *ylabel,
-  bool logy, bool output, int nbinsx, double xlow, double xup) :
-  data(data), size(size), filename(filename), xlabel(xlabel), ylabel(ylabel),
-  logy(logy), output(output),
-  nbinsx(nbinsx), xlow(xlow), xup(xup),
-  fnew(filename, "recreate"),
-  canvas(new TCanvas(filename, filename, 800, 600)) {
-  canvas->SetGrid();
-  if (logy) canvas->SetLogy();
-};
-
-template <class T>
-Histogram<T>::~Histogram() {
-  fnew.Write();
-  fnew.Close();
-  canvas->Close();
-};
-
-template <class T>
-void Histogram<T>::save_png(TCanvas *&sharedcanvas) {
-  std::string pngname = filename;
-  pngname.append(".png");
-  sharedcanvas->SaveAs(pngname.c_str());
-};
-
-template <class T>
-void Histogram<T>::output_data(const TH1F &h1) {
-  size_t size = h1.GetNbinsX();
-  std::string dataname = h1.GetName();
-  dataname.append(".txt");
-  std::ofstream outfile(dataname, std::ios::out | std::ios::trunc);
-  outfile << std::fixed << std::setprecision(0);
-  for (size_t i = 1; i <= size + 1; i++) {
-    outfile << h1.GetBinContent(i) << std::endl;
-  }
-  outfile.close();
-  std::cout << "Data saved in " << dataname << std::endl;
-};
-
-// need to split the function !!!
-template <class T>
-void Histogram<T>::draw_histogram(TCanvas *&sharedcanvas) {
-  std::cout << "Drawing histogram..." << std::endl;
-  TH1F h1(filename, "", nbinsx, xlow, xup);
-  h1.SetFillColorAlpha(kBlue, 0.4);
-  h1.SetLineColor(kBlue+1); 
-  h1.SetLineWidth(2); 
-  h1.GetXaxis()->SetTitle(xlabel);
-  h1.GetXaxis()->SetTitleColor(kBlack);
-  h1.GetYaxis()->SetTitle(ylabel);
-  h1.GetYaxis()->SetTitleColor(kBlack);
-  h1.SetStats(kTRUE);
-  for (int i = 0; i < size; i++) {
-    h1.Fill(data[i]);
-  }
-  sharedcanvas->cd();
-  h1.Draw();
-
-  if (output) output_data(h1);
-  save_png(sharedcanvas);
-  canvas->cd();
-};
-
-template <class T>
-void Histogram<T>::draw_poisson_fit(const TH1F &h1) {
-  double mean = h1.GetMean();
-  static TF1 *poissonFunc = new TF1("poisson", "[0]*TMath::Poisson(x,[1])", xlow, xup);
-  poissonFunc->SetLineWidth(2);
-  poissonFunc->SetParameters(h1.GetEntries() * (xup - xlow) / nbinsx, mean); 
-  poissonFunc->SetLineColor(kRed);
-  poissonFunc->Draw("SAME");
-  // canvas->Update();
-};
-
-// Draw poisson on histogram
-void draw_histogram_with_poisson(const int *data, int size, const char *filename, const char *xlabel, const char *ylabel, bool logy, bool output, int nbinsx, double xlow, double xup) {
-    TFile fnew(filename, "RECREATE");
-    TCanvas *canvas = new TCanvas("canvas", "Histogram with Poisson Distribution", 800, 600);
+public:
+  explicit Graph(std::string filename, int ww = 800, int wh = 600):
+  filename(filename) {
+    fnew = new TFile((filename + ".root").c_str()
+    , "recreate");
+    canvas = new TCanvas(filename.c_str(), filename.c_str(), ww, wh);
     canvas->SetGrid();
-    TH1F h1(filename, "", nbinsx, xlow, xup);
+  };
+
+  Graph(const Graph &graph): fnew(graph.fnew), canvas(graph.canvas),
+    filename(graph.filename) {
+  }
+
+  ~Graph(){
+    if (fnew->IsOpen()) {
+      fnew->Close();
+      canvas->Close();
+      std::cout << "Graph object \"" << filename << "\" has been deleted"
+      << std::endl;
+    }
+  };
+
+  virtual void output_data(std::string dataname = ""){};
+
+  virtual void draw_canvas(std::string figname = "") {
+    if (figname == "") {
+      this->canvas->SaveAs((filename + ".png").c_str(), "png");
+    } else {
+      if (figname.rfind(".png") == std::string::npos) {
+        this->canvas->SaveAs((filename + "_" + figname + ".png").c_str(), 
+        "png");
+      } else {
+        this->canvas->SaveAs((filename + "_" + figname).c_str(),
+        "png");
+      }
+    }
+  }
+};
+
+template <class T>
+class Histogram : public Graph {
+private:
+  std::vector<T> data;
+  TH1D hist;
+
+public:
+  explicit Histogram<T>(const std::vector<T> &data, std::string filename = "histogram",
+    int ww = 800, int wh = 600): Graph(filename, ww, wh), data(data) {
+  };
+  explicit Histogram<T>(const Graph &graph, const std::vector<T> &data):
+    Graph(graph), data(data) {
+  };
+  ~Histogram<T>(){
+  };
+
+  void output_data(std::string dataname = "") override {
+    if (dataname == "") {
+      dataname = filename;
+    } else if (dataname.rfind(".txt") == std::string::npos) {
+      dataname += ".txt";
+    }
+    std::ofstream file(dataname);
+    for (auto i = 0; i < data.size(); i++) {
+      file << data[i] << std::endl;
+    }
+    file.close();
+  };
+
+  void draw_histogram(int nbins = 10,
+    std::string figname = "histogram",
+    std::string xtitle = "x", std::string ytitle = "y",
+    double xlow = 0.0, double xup = 0.0,
+    bool logy = false, bool logx = false) {
+    if (data.size() == 0) {
+      data = this->data;
+    }
+    if (xlow == 0.0 && xup == 0.0) {
+      xlow = *std::min_element(data.begin(), data.end());
+      xup = *std::max_element(data.begin(), data.end());
+    }
+
+    fnew->cd();
+    canvas->cd();
+    if (logx) {
+      canvas->SetLogx();
+    }
     if (logy) {
-        canvas->SetLogy();
+      canvas->SetLogy();
     }
-    h1.SetFillColorAlpha(kBlue, 0.4);
-    h1.SetLineColor(kBlue+1); 
-    h1.SetLineWidth(2); 
-    h1.GetXaxis()->SetTitle(xlabel);
-    h1.GetXaxis()->SetTitleColor(kBlack);
-    h1.GetYaxis()->SetTitle(ylabel);
-    h1.GetYaxis()->SetTitleColor(kBlack);
-    h1.SetStats(kTRUE);
-    for (int i = 0; i < size; i++) {
-        h1.Fill(data[i]);
-    }
-    if (output) {
+
+    hist = *new TH1D(filename.c_str(), filename.c_str(), nbins, xlow, xup);
+    hist.SetFillColorAlpha(kBlue, 0.4);
+    hist.SetLineColor(kBlue+1); 
+    hist.SetLineWidth(2); 
+    hist.GetXaxis()->SetTitleColor(kBlack);
+    hist.GetYaxis()->SetTitleColor(kBlack);
+    hist.GetXaxis()->SetTitle(xtitle.c_str());
+    hist.GetYaxis()->SetTitle(ytitle.c_str());
+    hist.Draw();
+
+    for (auto i = 0; i < data.size(); i++) {
+      hist.Fill(data[i]);
     }
     
-    // Calculate the mean value for the Poisson distribution
-    double mean = h1.GetMean();
-    TF1 *poissonFunc = new TF1("poisson", "[0]*TMath::Poisson(x,[1])", xlow, xup);
-    poissonFunc->SetLineWidth(2);
-    poissonFunc->SetParameters(h1.GetEntries() * (xup - xlow) / nbinsx, mean); 
-    poissonFunc->SetLineColor(kRed);
-    h1.Draw();
-    poissonFunc->Draw("SAME");
-
-    std::string pngname = filename;
-    pngname.append(".png");
-    canvas->SaveAs(pngname.c_str());
-    fnew.Write();
-    fnew.Close();
-    canvas->Close();
-}
-
-const std::vector<long long int> &read_file(const char *filename) {
-  std::ifstream file(filename);
-  if (!file.is_open()) {
-    std::cerr << "Error: cannot open file " << filename << std::endl;
-    exit(1);
+    hist.Write();
+    draw_canvas(figname);
   }
-  std::string line;
-  static std::vector<long long int> array;
-  while (std::getline(file, line, '\n')) {
-    array.push_back(std::stoll(line));
-  }
-  return array;
 };
+
+template <class T>
+class Plot : public Graph {
+private:
+  TGraph graph;
+  std::vector<T> datax, datay;
+
+public:
+  explicit Plot<T>(const std::vector<T> &datax, std::vector<T> &datay, 
+    std::string filename = "plot", int ww = 800, int wh = 600):
+    Graph(filename, ww, wh), datax(datax), datay(datay){
+    if (datax.size() != datay.size()) {
+      std::cerr << "Error: datax and datay must have the same size" << std::endl;
+      exit(1);
+    }
+  };
+  explicit Plot<T>(const Graph &graph, const std::vector<T> &datax,
+    const std::vector<T> &datay): 
+    Graph(graph), datax(datax), datay(datay) {
+    if (datax.size() != datay.size()) {
+      std::cerr << "Error: datax and datay must have the same size" << std::endl;
+      exit(1);
+    }
+  };
+  ~Plot<T>() {
+  };
+
+  void output_data(std::string dataname = "") {
+    if (dataname == "") {
+      dataname = filename;
+    } else if (dataname.rfind(".txt") == std::string::npos) {
+      dataname += ".txt";
+    }
+    std::ofstream file(dataname);
+    for (auto i = 0; i < datax.size(); i++) {
+      file << datax[i] << " " << datay[i] << std::endl;
+    }
+    file.close();
+  };
+
+  void draw_plot(std::string figname = "plot", std::string xtitle = "x",
+    std::string ytitle = "y", bool logy = false, bool logx = false) {
+    fnew->cd();
+    canvas->cd();
+    if (logx) {
+      canvas->SetLogx();
+    }
+    if (logy) {
+      canvas->SetLogy();
+    }
+
+    graph = *new TGraph(datax.size(), &datax[0], &datay[0]);
+    graph.SetLineColor(kBlue+1); 
+    graph.SetLineWidth(2); 
+    graph.GetXaxis()->SetTitleColor(kBlack);
+    graph.GetYaxis()->SetTitleColor(kBlack);
+    graph.GetXaxis()->SetTitle(xtitle.c_str());
+    graph.GetYaxis()->SetTitle(ytitle.c_str());
+    graph.Draw("AL");
+
+    graph.Write();
+    draw_canvas(figname);
+  }
+};
+
+template <class T>
+class Scatter : public Graph {
+private:
+  TGraph graph;
+  std::vector<T> datax, datay;
+
+public:
+  explicit Scatter<T>(const std::vector<T> &datax, std::vector<T> &datay, 
+    std::string filename = "scatter", int ww = 800, int wh = 600):
+    Graph(filename, ww, wh), datax(datax), datay(datay){
+    if (datax.size() != datay.size()) {
+      std::cerr << "Error: datax and datay must have the same size" << std::endl;
+      exit(1);
+    }
+  };
+  explicit Scatter<T>(const Graph &graph, const std::vector<T> &datax,
+    const std::vector<T> &datay): 
+    Graph(graph), datax(datax), datay(datay) {
+    if (datax.size() != datay.size()) {
+      std::cerr << "Error: datax and datay must have the same size" << std::endl;
+      exit(1);
+    }
+  };
+  ~Scatter<T>(){
+  };
+  
+  void output_data(std::string dataname = "") override {
+    if (dataname == "") {
+      dataname = filename;
+    } else if (dataname.rfind(".txt") == std::string::npos) {
+      dataname += ".txt";
+    }
+    std::ofstream file(dataname);
+    for (auto i = 0; i < datax.size(); i++) {
+      file << datax[i] << " " << datay[i] << std::endl;
+    }
+    file.close();
+  }
+
+  void draw_scatter(std::string figname = "scatter", std::string xtitle = "x", 
+    std::string ytitle = "y", bool logy = false, bool logx = false) {
+    fnew->cd();
+    canvas->cd();
+    if (logx) {
+      canvas->SetLogx();
+    }
+    if (logy) {
+      canvas->SetLogy();
+    }
+    
+    graph = *new TGraph(datax.size(), &datax[0], &datay[0]);
+    graph.SetMarkerStyle(20);
+    graph.SetMarkerSize(1);
+    graph.SetMarkerColor(kBlue+1);
+    graph.SetLineWidth(0); 
+    graph.GetXaxis()->SetTitleColor(kBlack);
+    graph.GetYaxis()->SetTitleColor(kBlack);
+    graph.GetXaxis()->SetTitle(xtitle.c_str());
+    graph.GetYaxis()->SetTitle(ytitle.c_str());
+    graph.Draw("AP");
+
+    graph.Write();
+    draw_canvas(figname);
+  }
+
+};
+
+template <class T>
+class ScatterErr : public Graph {
+private:
+  TGraphErrors graph;
+  std::vector<T> datax, datay, errx, erry;
+
+public:
+  explicit ScatterErr<T>(const std::vector<T> &datax, std::vector<T> &datay, 
+    std::vector<T> &errx, std::vector<T> &erry,
+    std::string filename = "grapherr", int ww = 800, int wh = 600):
+    Graph(filename, ww, wh), datax(datax), datay(datay),
+    errx(errx), erry(erry) {
+    if (datax.size() == datay.size() == erry.size() == errx.size()) {
+
+    } else {
+      std::cerr << "Error: datax, datay, errx, and erry must have the same size" << std::endl;
+      exit(1);
+    }
+  };
+  explicit ScatterErr<T>(const Graph &graph, const std::vector<T> &datax,
+    const std::vector<T> &datay, const std::vector<T> &errx,
+    const std::vector<T> &erry): 
+    Graph(graph), datax(datax), datay(datay), errx(errx), erry(erry) {
+    if (datax.size() == datay.size() && datax.size() == erry.size() 
+    && datax.size() == errx.size()) {
+
+    } else {
+      std::cerr << "Error: datax, datay, errx, and erry must have the same size" << std::endl;
+      exit(1);
+    }
+  };
+  ~ScatterErr<T>(){
+  };
+
+  void output_data(std::string dataname = "") override {
+    if (dataname == "") {
+      dataname == filename;
+    } else if (dataname.rfind(".txt") == std::string::npos) {
+      dataname += ".txt";
+    }
+
+    std::ofstream file(dataname);
+    for (auto i = 0; i < datax.size(); i++) {
+      file << datax[i] << " " << datay[i] << " "
+           << errx[i] << " " << erry[i] << std::endl;
+    }
+    file.close();
+  }
+
+  void draw_scatterr(std::string figname = "", std::string xtitle = "x",
+    std::string ytitle = "y", bool logy = false, bool logx = false) {
+    fnew->cd();
+    canvas->cd();
+    if (logx) {
+      canvas->SetLogx();
+    }
+    if (logy) {
+      canvas->SetLogy();
+    }
+    
+    graph = *new TGraphErrors(datax.size(), &datax[0], &datay[0], &errx[0], &erry[0]);
+    graph.SetMarkerStyle(20);
+    graph.SetMarkerSize(0.5);
+    graph.SetMarkerColor(kBlue+1);
+    graph.GetXaxis()->SetTitleColor(kBlack);
+    graph.GetYaxis()->SetTitleColor(kBlack);
+    graph.GetXaxis()->SetTitle(xtitle.c_str());
+    graph.GetYaxis()->SetTitle(ytitle.c_str());
+    graph.Draw("AP");
+
+    graph.Write();
+    draw_canvas(figname);
+  }
+
+
+};
+
 
 #endif
